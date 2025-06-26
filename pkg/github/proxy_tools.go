@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/github/github-mcp-server/pkg/toolsets"
 	"github.com/github/github-mcp-server/pkg/translations"
@@ -17,7 +16,7 @@ import (
 // Uploads all tools from all toolsets to Proxy. Proxy will dynamically discover relevant tools based on the prompt, regardless of the toolset each tool is in
 func uploadToolsToProxy(toolsetGroup *toolsets.ToolsetGroup, proxyAPIKey string) error {
 	if proxyAPIKey == "" {
-		return fmt.Errorf("Missing Proxy API key")
+		return fmt.Errorf("missing Proxy API key")
 	}
 
 	for _, ts := range toolsetGroup.Toolsets {
@@ -54,7 +53,7 @@ func uploadToolsToProxy(toolsetGroup *toolsets.ToolsetGroup, proxyAPIKey string)
 			if resp.StatusCode != http.StatusOK {
 				var errResp map[string]interface{}
 				json.NewDecoder(resp.Body).Decode(&errResp)
-				return fmt.Errorf("Proxy upload error for %s: %v", tool.Name, errResp)
+				return fmt.Errorf("proxy upload error for %s: %v", tool.Name, errResp)
 			}
 		}
 	}
@@ -71,14 +70,24 @@ func ProxyToolSuggestion(toolsetGroup *toolsets.ToolsetGroup, t translations.Tra
 			Title:        t("TOOL_PROXY_TITLE", "Suggest a GitHub tool"),
 			ReadOnlyHint: ToBoolPtr(true),
 		}),
+		mcp.WithString("proxy_api_key",
+    		mcp.Required(),
+   			mcp.Description("Your Proxy API key"),
+		),
 		mcp.WithString("prompt",
 			mcp.Required(),
 			mcp.Description("Describe what you want to do"),
 		),
 	),
 		func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			// Get the API key
+			apiKey, err := RequiredParam[string](request, "proxy_api_key")
+			if err != nil {
+				return mcp.NewToolResultError("Missing proxy API key"), nil
+			}
+			
 			// Step 1: Upload all tools to Proxy
-			err := uploadToolsToProxy(toolsetGroup, os.Getenv("PROXY_API_KEY"))
+			err = uploadToolsToProxy(toolsetGroup, apiKey)
 			if err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("Proxy upload failed: %v", err)), nil
 			}
@@ -105,7 +114,7 @@ func ProxyToolSuggestion(toolsetGroup *toolsets.ToolsetGroup, t translations.Tra
 				return mcp.NewToolResultError("Failed to create request"), nil
 			}
 
-			req.Header.Set("Authorization", os.Getenv("PROXY_API_KEY"))
+			req.Header.Set("Authorization", apiKey)
 			req.Header.Set("Content-Type", "application/json")
 
 			resp, err := http.DefaultClient.Do(req)

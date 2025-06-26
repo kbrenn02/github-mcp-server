@@ -45,6 +45,8 @@ var (
 				return fmt.Errorf("failed to unmarshal toolsets: %w", err)
 			}
 
+			useProxy := viper.GetBool("enable_proxy_tools")
+
 			stdioServerConfig := ghmcp.StdioServerConfig{
 				Version:              version,
 				Host:                 viper.GetString("host"),
@@ -55,6 +57,7 @@ var (
 				ExportTranslations:   viper.GetBool("export-translations"),
 				EnableCommandLogging: viper.GetBool("enable-command-logging"),
 				LogFilePath:          viper.GetString("log-file"),
+				UseProxy:             useProxy,
 			}
 			return ghmcp.RunStdioServer(stdioServerConfig)
 		},
@@ -70,6 +73,7 @@ func init() {
 	// Add global flags that will be shared by all commands
 	rootCmd.PersistentFlags().StringSlice("toolsets", github.DefaultTools, "An optional comma separated list of groups of tools to allow, defaults to enabling all")
 	rootCmd.PersistentFlags().Bool("dynamic-toolsets", false, "Enable dynamic toolsets")
+	rootCmd.PersistentFlags().Bool("enable-proxy-tools", false, "Enable prompt-based dynamic tool discovery via Proxy")
 	rootCmd.PersistentFlags().Bool("read-only", false, "Restrict the server to read-only operations")
 	rootCmd.PersistentFlags().String("log-file", "", "Path to log file")
 	rootCmd.PersistentFlags().Bool("enable-command-logging", false, "When enabled, the server will log all command requests and responses to the log file")
@@ -79,6 +83,7 @@ func init() {
 	// Bind flag to viper
 	_ = viper.BindPFlag("toolsets", rootCmd.PersistentFlags().Lookup("toolsets"))
 	_ = viper.BindPFlag("dynamic_toolsets", rootCmd.PersistentFlags().Lookup("dynamic-toolsets"))
+	_ = viper.BindPFlag("enable_proxy_tools", rootCmd.PersistentFlags().Lookup("enable-proxy-tools"))
 	_ = viper.BindPFlag("read-only", rootCmd.PersistentFlags().Lookup("read-only"))
 	_ = viper.BindPFlag("log-file", rootCmd.PersistentFlags().Lookup("log-file"))
 	_ = viper.BindPFlag("enable-command-logging", rootCmd.PersistentFlags().Lookup("enable-command-logging"))

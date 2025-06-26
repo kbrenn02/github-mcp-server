@@ -178,6 +178,9 @@ type StdioServerConfig struct {
 
 	// Path to the log file if not stderr
 	LogFilePath string
+
+	// Whether to enable Proxy tools
+	UseProxy bool
 }
 
 // RunStdioServer is not concurrent safe.
