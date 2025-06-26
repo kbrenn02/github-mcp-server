@@ -13,6 +13,9 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+var proxyUploadURL = "https://api.tryproxy.ai/functions/v1/upload"
+var proxySearchURL = "https://api.tryproxy.ai/functions/v1/search"
+
 // Uploads all tools from all toolsets to Proxy. Proxy will dynamically discover relevant tools based on the prompt, regardless of the toolset each tool is in
 func uploadToolsToProxy(toolsetGroup *toolsets.ToolsetGroup, proxyAPIKey string) error {
 	if proxyAPIKey == "" {
@@ -36,7 +39,7 @@ func uploadToolsToProxy(toolsetGroup *toolsets.ToolsetGroup, proxyAPIKey string)
 				return fmt.Errorf("marshal error: %w", err)
 			}
 
-			req, err := http.NewRequest("POST", "https://api.tryproxy.ai/functions/v1/upload", bytes.NewBuffer(body))
+			req, err := http.NewRequest("POST", proxyUploadURL, bytes.NewBuffer(body))
 			if err != nil {
 				return fmt.Errorf("request creation error: %w", err)
 			}
@@ -48,11 +51,17 @@ func uploadToolsToProxy(toolsetGroup *toolsets.ToolsetGroup, proxyAPIKey string)
 			if err != nil {
 				return fmt.Errorf("upload failed for %s: %w", tool.Name, err)
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					fmt.Printf("failed to close response body: %v", err)
+				}
+			}()
 
 			if resp.StatusCode != http.StatusOK {
 				var errResp map[string]interface{}
-				json.NewDecoder(resp.Body).Decode(&errResp)
+				if decodeErr := json.NewDecoder(resp.Body).Decode(&errResp); decodeErr != nil {
+					fmt.Printf("failed to decode error response: %v", decodeErr)
+				}
 				return fmt.Errorf("proxy upload error for %s: %v", tool.Name, errResp)
 			}
 		}
@@ -62,30 +71,30 @@ func uploadToolsToProxy(toolsetGroup *toolsets.ToolsetGroup, proxyAPIKey string)
 	return nil
 }
 
-// Function to search tools via Proxy
+// ProxyToolSuggestion searches tools via Proxy based on the user's prompt.
 func ProxyToolSuggestion(toolsetGroup *toolsets.ToolsetGroup, t translations.TranslationHelperFunc) (mcp.Tool, server.ToolHandlerFunc) {
 	return mcp.NewTool("proxy_tool_suggestion",
-		mcp.WithDescription(t("TOOL_PROXY_DESCRIPTION", "Suggest GitHub tools via Proxy based on a prompt")),
-		mcp.WithToolAnnotation(mcp.ToolAnnotation{
-			Title:        t("TOOL_PROXY_TITLE", "Suggest a GitHub tool"),
-			ReadOnlyHint: ToBoolPtr(true),
-		}),
-		mcp.WithString("proxy_api_key",
-    		mcp.Required(),
-   			mcp.Description("Your Proxy API key"),
+			mcp.WithDescription(t("TOOL_PROXY_DESCRIPTION", "Suggest GitHub tools via Proxy based on a prompt")),
+			mcp.WithToolAnnotation(mcp.ToolAnnotation{
+				Title:        t("TOOL_PROXY_TITLE", "Suggest a GitHub tool"),
+				ReadOnlyHint: ToBoolPtr(true),
+			}),
+			mcp.WithString("proxy_api_key",
+				mcp.Required(),
+				mcp.Description("Your Proxy API key"),
+			),
+			mcp.WithString("prompt",
+				mcp.Required(),
+				mcp.Description("Describe what you want to do"),
+			),
 		),
-		mcp.WithString("prompt",
-			mcp.Required(),
-			mcp.Description("Describe what you want to do"),
-		),
-	),
 		func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			// Get the API key
 			apiKey, err := RequiredParam[string](request, "proxy_api_key")
 			if err != nil {
 				return mcp.NewToolResultError("Missing proxy API key"), nil
 			}
-			
+
 			// Step 1: Upload all tools to Proxy
 			err = uploadToolsToProxy(toolsetGroup, apiKey)
 			if err != nil {
@@ -109,7 +118,7 @@ func ProxyToolSuggestion(toolsetGroup *toolsets.ToolsetGroup, t translations.Tra
 				return mcp.NewToolResultError("Failed to marshal query"), nil
 			}
 
-			req, err := http.NewRequest("POST", "https://api.tryproxy.ai/functions/v1/search", bytes.NewBuffer(body))
+			req, err := http.NewRequest("POST", proxySearchURL, bytes.NewBuffer(body))
 			if err != nil {
 				return mcp.NewToolResultError("Failed to create request"), nil
 			}
@@ -121,11 +130,17 @@ func ProxyToolSuggestion(toolsetGroup *toolsets.ToolsetGroup, t translations.Tra
 			if err != nil {
 				return mcp.NewToolResultError("Failed to call Proxy API"), nil
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					fmt.Printf("failed to close response body: %v", err)
+				}
+			}()
 
 			if resp.StatusCode != http.StatusOK {
 				var errResp map[string]interface{}
-				json.NewDecoder(resp.Body).Decode(&errResp)
+				if decodeErr := json.NewDecoder(resp.Body).Decode(&errResp); decodeErr != nil {
+					fmt.Printf("failed to decode error response: %v", decodeErr)
+				}
 				return mcp.NewToolResultError(fmt.Sprintf("Proxy API error: %v", errResp)), nil
 			}
 
